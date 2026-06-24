@@ -91,25 +91,27 @@ bot.on("callback_query:data", async (ctx) => {
   // Send native "typing" action to make it feel responsive
   await ctx.replyWithChatAction("typing").catch(() => {});
   
-  let loadingMsgId: number | undefined;
+  let useFallback = false;
+  let fallbackMsgId: number | undefined;
+
   try {
     console.log("Attempting sendRichMessageDraft API call...");
     const draftRes = await (ctx.api as any).sendRichMessageDraft({
       chat_id: ctx.chat?.id,
-      text: "<tg-thinking>در حال پردازش...</tg-thinking>",
-      reply_to_message_id: originalMessage.message_id,
-      parse_mode: "HTML"
+      draft_id: Date.now(),
+      rich_message: { html: "<tg-thinking>در حال پردازش...</tg-thinking>" }
     });
-    loadingMsgId = draftRes.message_id;
-    console.log("sendRichMessageDraft succeeded", { message_id: loadingMsgId });
-  } catch (err) {
-    console.error("sendRichMessageDraft failed, using fallback ctx.reply", err);
+    console.log("sendRichMessageDraft succeeded");
+  } catch (err: any) {
+    console.error("sendRichMessageDraft failed, using fallback ctx.reply", err.message);
+    useFallback = true;
+    
     // Fallback if the theoretical API throws an error
-    const msg = await ctx.reply("<tg-thinking>در حال پردازش...</tg-thinking> ⏳", { 
+    const msg = await ctx.reply("⏳ <i>در حال پردازش و ارتباط با هوش مصنوعی...</i>", { 
       parse_mode: "HTML",
-      reply_to_message_id: originalMessage.message_id 
+      reply_parameters: { message_id: originalMessage.message_id } 
     });
-    loadingMsgId = msg.message_id;
+    fallbackMsgId = msg.message_id;
   }
   
   try {
@@ -117,44 +119,61 @@ bot.on("callback_query:data", async (ctx) => {
     const formattedText = await formatText(text, formatType);
     console.log(`پردازش موفق Gemini`, { result_length: formattedText.length });
     
-    try {
-      console.log("Attempting sendRichMessage API call...");
-      await (ctx.api as any).sendRichMessage({
-        chat_id: ctx.chat?.id,
-        text: formattedText,
-        reply_to_message_id: originalMessage.message_id,
-        parse_mode: "HTML"
-      });
-      console.log("sendRichMessage succeeded");
-      // Delete the thinking draft if a new rich message was sent
-      if (loadingMsgId) {
-        await ctx.api.deleteMessage(ctx.chat?.id as number, loadingMsgId).catch((err) => {
-          console.warn("Failed to delete draft message after sendRichMessage", err);
+    if (!useFallback) {
+      try {
+        console.log("Attempting sendRichMessage API call...");
+        await (ctx.api as any).sendRichMessage({
+          chat_id: ctx.chat?.id,
+          rich_message: { html: formattedText },
+          reply_parameters: { message_id: originalMessage.message_id }
+        });
+        console.log("sendRichMessage succeeded");
+      } catch (err: any) {
+        console.error("sendRichMessage failed, using fallback reply", err.message);
+        // Fallback using standard reply
+        await ctx.reply(formattedText, { 
+          parse_mode: "HTML",
+          reply_parameters: { message_id: originalMessage.message_id }
+        }).catch((replyErr) => {
+          console.error("Fallback reply failed too:", replyErr.message);
+          ctx.reply("متن قالب‌بندی شده دارای تگ‌های نامعتبر برای این نسخه از تلگرام بود:\n\n" + formattedText.replace(/</g, '&lt;').replace(/>/g, '&gt;'), {
+            parse_mode: "HTML",
+            reply_parameters: { message_id: originalMessage.message_id }
+          }).catch(() => {});
         });
       }
-    } catch (err) {
-      console.error("sendRichMessage failed, using fallback editMessageText", err);
+    } else {
       // Fallback using standard editMessageText
-      if (loadingMsgId) {
+      if (fallbackMsgId) {
         await ctx.api.editMessageText(
           ctx.chat?.id as number,
-          loadingMsgId,
+          fallbackMsgId,
           formattedText,
           { parse_mode: "HTML" }
         ).catch((editErr) => {
-          console.error("Fallback editMessageText failed too", editErr);
+          console.error("Fallback editMessageText failed too:", editErr.message);
+          ctx.api.editMessageText(
+            ctx.chat?.id as number,
+            fallbackMsgId as number,
+            "متن قالب‌بندی شده دارای تگ‌های نامعتبر برای این نسخه از تلگرام بود:\n\n" + formattedText.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+            { parse_mode: "HTML" }
+          ).catch(() => {});
         });
       }
     }
-  } catch (error) {
-    console.error("خطا در هنگام ارتباط با Gemini", error);
-    if (loadingMsgId) {
+  } catch (error: any) {
+    console.error("خطا در هنگام ارتباط با Gemini", error.message || error);
+    const errorMsg = "❌ <b>خطا:</b> متأسفانه در ارتباط با هوش مصنوعی مشکلی رخ داد. لطفاً دوباره تلاش کنید.";
+    
+    if (useFallback && fallbackMsgId) {
       await ctx.api.editMessageText(
         ctx.chat?.id as number,
-        loadingMsgId,
-        "❌ <b>خطا:</b> متأسفانه در ارتباط با هوش مصنوعی مشکلی رخ داد. لطفاً دوباره تلاش کنید.",
+        fallbackMsgId,
+        errorMsg,
         { parse_mode: "HTML" }
-      ).catch((err) => console.error("خطا در بروزرسانی پیام ارور", err));
+      ).catch(() => {});
+    } else {
+      await ctx.reply(errorMsg, { parse_mode: "HTML", reply_parameters: { message_id: originalMessage.message_id } }).catch(() => {});
     }
   }
 });

@@ -8,76 +8,67 @@ if (!apiKey) {
 }
 const ai = new GoogleGenAI({ apiKey: apiKey || "DUMMY_KEY" });
 
-
 const SYSTEM_INSTRUCTIONS = {
-  table: `You are an expert data formatter for Telegram.
-Your task is to receive unstructured data and format it into a clean table using the new Telegram Rich Message API.
+  table: `شما یک دستیار هوشمند برای فرمت کردن داده‌ها در تلگرام هستید.
+وظیفه شما این است که داده‌های نامنظم را دریافت کرده و آن‌ها را در قالب یک جدول مرتب (table) با استفاده از API جدید Rich Message تلگرام بازگردانید.
 
-CRITICAL RULES:
-1. You MUST use <table>, <tr>, <th>, and <td> tags.
-2. You can use attributes like <table bordered striped> if appropriate.
-3. Do NOT output any markdown code block wrappers (like \`\`\`html). Output raw HTML tags.
-4. Extract the most logical columns from the user's unstructured text.
+قوانین مهم:
+۱. حتماً از تگ‌های <table>, <tr>, <th>, و <td> استفاده کنید.
+۲. می‌توانید از ویژگی‌هایی مانند <table bordered striped> استفاده کنید.
+۳. به هیچ وجه خروجی را داخل بلوک کد مارک‌داون (مثل \`\`\`html) قرار ندهید. مستقیماً تگ‌های HTML را چاپ کنید.
+۴. بهترین ستون‌ها را بر اساس متن نامنظم کاربر تشخیص دهید.
+۵. خروجی فقط و فقط تگ‌های HTML باشد و هیچ متن اضافه‌ای قبل یا بعد از آن نباشد.`,
 
-Example format:
-<table bordered striped>
-  <tr>
-    <th>Column 1</th>
-    <th>Column 2</th>
-  </tr>
-  <tr>
-    <td>Data</td>
-    <td>Value</td>
-  </tr>
-</table>`,
+  list: `شما یک دستیار هوشمند برای فرمت کردن داده‌ها در تلگرام هستید.
+وظیفه شما تبدیل متن‌های نامنظم به یک لیست مرتب با استفاده از API جدید Rich Message تلگرام است.
 
-  list: `You are an expert data formatter for Telegram.
-Your task is to receive unstructured notes or text and convert it into a beautiful, organized list using the new Telegram Rich Message API.
+قوانین مهم:
+۱. حتماً از تگ‌های ساختاری لیست مثل <ul>, <ol> و <li> استفاده کنید.
+۲. به هیچ وجه خروجی را داخل بلوک کد مارک‌داون (مثل \`\`\`html) قرار ندهید.
+۳. از ایموجی دستی برای بولت‌ها استفاده نکنید؛ اجازه دهید تگ <li> به صورت بومی رندر شود.
+۴. کلمات مهم را با استفاده از تگ‌های <b> و <i> برجسته کنید.
+۵. خروجی فقط و فقط تگ‌های HTML باشد و هیچ متن اضافه‌ای قبل یا بعد از آن نباشد.`,
 
-CRITICAL RULES:
-1. You MUST use structural list tags: <ul>, <ol>, and <li>.
-2. Do NOT use markdown code block wrappers (like \`\`\`html).
-3. Do not add manual emojis for bullets, rely on the native <li> rendering.
-4. Emphasize important keywords using <b> and <i> tags.
-5. Ensure a clean hierarchy if the data has nested concepts.
-6. Only output the HTML, do not add introductory conversational text.`,
+  smart: `شما یک دستیار هوشمند برای فرمت کردن داده‌ها در تلگرام هستید.
+وظیفه شما این است که بهترین و زیباترین قالب را برای متن نامنظم کاربر انتخاب کنید تا خوانایی آن در تلگرام به حداکثر برسد.
 
-  smart: `You are a smart formatting assistant for Telegram.
-Your task is to automatically determine the best way to format the user's unstructured text so it is highly readable and professional on a Telegram chat.
-
-CRITICAL RULES:
-1. Use all available Telegram Rich Message HTML tags: <h1> to <h6>, <p>, <hr/>, <blockquote>, <table>, <ul>, <ol>, <li>, <b>, <i>, <u>, <s>, <code>, <pre>, <a>.
-2. If the data is highly tabular, use <table> tags.
-3. If it's a list, use <ul> or <ol> with <li> tags.
-4. Use <h1>, <h2> for main headings, <p> for paragraphs, and <hr/> for separators.
-5. Do NOT use markdown wrappers (like \`\`\`html). Only raw HTML tags.
-6. Only output the final formatted result, no conversational filler.`
+قوانین مهم:
+۱. از تمام تگ‌های جدید Rich Message تلگرام می‌توانید استفاده کنید: <h1> تا <h6>, <p>, <hr/>, <blockquote>, <table>, <ul>, <ol>, <li>, <b>, <i>, <u>, <s>, <code>, <pre>, <a>.
+۲. اگر داده‌ها جدولی هستند از <table> استفاده کنید.
+۳. اگر داده‌ها لیستی هستند از <ul> یا <ol> با <li> استفاده کنید.
+۴. برای عناوین از <h1> یا <h2>، برای پاراگراف‌ها از <p> و برای خط جداکننده از <hr/> استفاده کنید.
+۵. خروجی را داخل بلوک کد مارک‌داون (مثل \`\`\`html) قرار ندهید. مستقیماً HTML خام بدهید.
+۶. خروجی نهایی فقط و فقط تگ‌های فرمت شده باشد و هیچ متن اضافه‌ای نداشته باشد.`
 };
 
 export async function formatText(text: string, style: "table" | "list" | "smart"): Promise<string> {
   const systemInstruction = SYSTEM_INSTRUCTIONS[style];
   
   try {
+    console.log(`[Gemini] Sending request with text length: ${text.length}`);
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash",
       contents: text,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.2, // Low temperature for consistent formatting
+        temperature: 0.2,
       }
     });
     
-    // Clean up potential markdown wrappers if the model accidentally includes them
     let output = response.text || "";
+    console.log(`[Gemini] Raw output length: ${output.length}`);
+    
     if (output.startsWith("\`\`\`html")) {
       output = output.replace(/^\`\`\`html\n?/, "").replace(/\n?\`\`\`$/, "");
     } else if (output.startsWith("\`\`\`")) {
       output = output.replace(/^\`\`\`[a-z]*\n?/, "").replace(/\n?\`\`\`$/, "");
     }
     
-    return sanitizeTelegramHTML(output.trim());
+    const finalHtml = sanitizeTelegramHTML(output.trim());
+    console.log(`[Gemini] Final sanitized HTML length: ${finalHtml.length}`);
+    return finalHtml;
   } catch (error) {
-    console.error("Gemini API Request Failed:", error);
+    console.error("[Gemini] API Request Failed:");
     if (error instanceof Error) {
       console.error(error.message, error.stack);
     } else {
