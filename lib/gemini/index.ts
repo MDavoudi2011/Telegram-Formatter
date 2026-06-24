@@ -1,8 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { sanitizeTelegramHTML } from "../bot/utils";
+import { logger } from "../logger";
 
 // Initialize Gemini client using server-side environment variable.
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 
 const SYSTEM_INSTRUCTIONS = {
   table: `You are an expert data formatter for Telegram.
@@ -72,7 +74,7 @@ export async function formatText(text: string, style: "table" | "list" | "smart"
     
     return sanitizeTelegramHTML(output.trim());
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    logger.error("Gemini API Request Failed", error);
     throw new Error("Failed to format text with Gemini.");
   }
 }

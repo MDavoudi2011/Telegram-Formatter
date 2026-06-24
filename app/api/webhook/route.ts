@@ -1,6 +1,7 @@
 import { webhookCallback } from "grammy";
 import { bot } from "@/lib/bot";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 // Using grammy's built-in webhook callback adapter for web standards (Next.js App Router compatible)
 const handleUpdate = webhookCallback(bot, "std/http");
@@ -10,17 +11,11 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    // Secret token validation (optional but highly recommended for production)
-    // const secretToken = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
-    // if (secretToken !== process.env.TELEGRAM_SECRET_TOKEN) {
-    //   return new NextResponse("Unauthorized", { status: 401 });
-    // }
-
     // Convert NextRequest to standard Request object if needed, but NextRequest IS a standard Request
     const response = await handleUpdate(req);
     return response;
   } catch (error) {
-    console.error("Webhook Error:", error);
+    logger.error("Webhook route encountered an error", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

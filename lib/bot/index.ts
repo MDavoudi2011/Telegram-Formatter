@@ -1,5 +1,6 @@
 import { Bot, Context, webhookCallback } from "grammy";
 import { formatText } from "../gemini";
+import { logger } from "../logger";
 
 // Initialize the bot. We must handle missing tokens gracefully for the build process.
 const token = process.env.TELEGRAM_BOT_TOKEN || "12345:DUMMY_TOKEN_FOR_BUILD_PROCESS";
@@ -7,12 +8,13 @@ export const bot = new Bot(token);
 
 // Middleware to log incoming updates (optional, for debugging)
 bot.use(async (ctx, next) => {
-  console.log(`Received update`);
+  logger.info(`Received update`, { update: ctx.update });
   await next();
 });
 
 // Command handler for /start
 bot.command("start", async (ctx) => {
+  logger.info("User sent /start command", { chat_id: ctx.chat?.id });
   await ctx.reply(
     "👋 <b>Welcome to the Smart Formatter Bot!</b>\\n\\n" +
     "Send me any unstructured text, messy notes, or raw data, and I will help you format it into a beautiful Table or List for Telegram.\\n\\n" +
@@ -26,9 +28,12 @@ bot.on("message", async (ctx) => {
   const text = ctx.message.text || ctx.message.caption;
   
   if (!text) {
+    logger.warn("Received message without text or caption", { message: ctx.message });
     await ctx.reply("Please send me some text or a captioned image/document to format.");
     return;
   }
+  
+  logger.info("Received text message to format", { text_length: text.length });
   
   // Create an inline keyboard with the 3 formatting options.
   // We use short callback_data to stay well under the 64-byte limit.
@@ -53,6 +58,7 @@ bot.on("message", async (ctx) => {
 // Callback query handler for the inline keyboard buttons
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
+  logger.info(`Callback query triggered: ${data}`, { callbackQuery: ctx.callbackQuery });
   
   // We extract the original text from the message that the bot replied to.
   // This solves the 64-byte callback_data limit beautifully, as we don't need
@@ -62,6 +68,7 @@ bot.on("callback_query:data", async (ctx) => {
   const text = originalMessage && ("text" in originalMessage ? originalMessage.text : "caption" in originalMessage ? originalMessage.caption : undefined);
 
   if (!text) {
+    logger.error("Could not find original text for callback", { originalMessage });
     await ctx.answerCallbackQuery({
       text: "❌ Error: Could not find the original text.",
       show_alert: true
@@ -74,6 +81,7 @@ bot.on("callback_query:data", async (ctx) => {
   else if (data === "format_list") formatType = "list";
   else if (data === "format_smart") formatType = "smart";
   else {
+    logger.warn("Unknown callback data", { data });
     await ctx.answerCallbackQuery("Unknown format type.");
     return;
   }
@@ -84,6 +92,7 @@ bot.on("callback_query:data", async (ctx) => {
   // Send a temporary processing message using the requested new 'sendRichMessageDraft'
   let loadingMsgId: number | undefined;
   try {
+    logger.info("Attempting sendRichMessageDraft API call...");
     const draftRes = await (ctx.api as any).sendRichMessageDraft({
       chat_id: ctx.chat?.id,
       text: "<tg-thinking>در حال پردازش...</tg-thinking>",
@@ -91,7 +100,9 @@ bot.on("callback_query:data", async (ctx) => {
       parse_mode: "HTML"
     });
     loadingMsgId = draftRes.message_id;
+    logger.success("sendRichMessageDraft succeeded", { message_id: loadingMsgId });
   } catch (err) {
+    logger.error("sendRichMessageDraft failed, using fallback ctx.reply", err);
     // Fallback if the theoretical API throws an error
     const msg = await ctx.reply("<tg-thinking>در حال پردازش...</tg-thinking> ⏳", { 
       parse_mode: "HTML",
@@ -101,21 +112,28 @@ bot.on("callback_query:data", async (ctx) => {
   }
   
   try {
+    logger.info(`Sending request to Gemini (${formatType})...`);
     const formattedText = await formatText(text, formatType);
+    logger.success(`Gemini format successful`, { result_length: formattedText.length });
     
     // Replace the final message using the requested 'sendRichMessage'
     try {
+      logger.info("Attempting sendRichMessage API call...");
       await (ctx.api as any).sendRichMessage({
         chat_id: ctx.chat?.id,
         text: formattedText,
         reply_to_message_id: originalMessage.message_id,
         parse_mode: "HTML"
       });
+      logger.success("sendRichMessage succeeded");
       // Delete the thinking draft if a new rich message was sent
       if (loadingMsgId) {
-        await ctx.api.deleteMessage(ctx.chat?.id as number, loadingMsgId).catch(() => {});
+        await ctx.api.deleteMessage(ctx.chat?.id as number, loadingMsgId).catch((err) => {
+          logger.warn("Failed to delete draft message after sendRichMessage", err);
+        });
       }
     } catch (err) {
+      logger.error("sendRichMessage failed, using fallback editMessageText", err);
       // Fallback using standard editMessageText
       if (loadingMsgId) {
         await ctx.api.editMessageText(
@@ -123,11 +141,13 @@ bot.on("callback_query:data", async (ctx) => {
           loadingMsgId,
           formattedText,
           { parse_mode: "HTML" }
-        );
+        ).catch((editErr) => {
+          logger.error("Fallback editMessageText failed too", editErr);
+        });
       }
     }
   } catch (error) {
-    console.error("Format Error:", error);
+    logger.error("Format Error during Gemini processing", error);
     if (loadingMsgId) {
       await ctx.api.editMessageText(
         ctx.chat?.id as number,
@@ -141,5 +161,5 @@ bot.on("callback_query:data", async (ctx) => {
 
 // Error handling wrapper
 bot.catch((err) => {
-  console.error(`Error in bot:`, err);
+  logger.error(`Fatal error in bot`, err);
 });
