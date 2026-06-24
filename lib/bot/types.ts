@@ -1,6 +1,5 @@
 import { Context, SessionFlavor } from "grammy";
 
-// تعریف ساختار داده‌های موقت (Session)
 export interface SessionData {
   step: 'idle' | 'list_type' | 'list_items' | 'table_headers' | 'table_rows' | 'table_style';
   listItems: string[];
@@ -10,10 +9,8 @@ export interface SessionData {
   listType?: 'unordered' | 'ordered' | 'checkbox';
 }
 
-// ترکیب کانتکست اصلی تلگرام با سشن‌های ما
 export type BotContext = Context & SessionFlavor<SessionData>;
 
-// مقادیر اولیه برای شروع کار ربات
 export function initialSession(): SessionData {
   return {
     step: 'idle',
@@ -24,7 +21,6 @@ export function initialSession(): SessionData {
   };
 }
 
-// تابع مهم برای جلوگیری از به هم ریختن تگ‌های HTML تلگرام
 export function sanitizeHtml(text: string): string {
   if (!text) return "";
   return text
@@ -33,4 +29,12 @@ export function sanitizeHtml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
+}
+
+// تابع تشخیص خودکار وجود کلمات فارسی/عربی در متن
+export function containsRTL(text: string): boolean {
+  if (!text) return false;
+  // این Regex بازه کاراکترهای حروف راست‌چین را بررسی می‌کند
+  const rtlRegex = /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/;
+  return rtlRegex.test(text);
 }

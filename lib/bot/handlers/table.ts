@@ -1,5 +1,5 @@
 import { Composer, InlineKeyboard } from "grammy";
-import { BotContext, initialSession, sanitizeHtml } from "../types";
+import { BotContext, initialSession, sanitizeHtml, containsRTL } from "../types";
 
 export const tableComposer = new Composer<BotContext>();
 
@@ -10,7 +10,6 @@ tableComposer.callbackQuery("create_table", async (ctx) => {
   await ctx.editMessageText("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
 });
 
-// وقتی کاربر دکمه دریافت خروجی را زد، ابتدا استایل را می‌پرسیم
 tableComposer.callbackQuery("finish_table", async (ctx) => {
   await ctx.answerCallbackQuery();
   const headers = ctx.session.tableHeaders;
@@ -32,14 +31,12 @@ tableComposer.callbackQuery("finish_table", async (ctx) => {
   await ctx.editMessageText("لطفاً ظاهر جدول خود را انتخاب کنید:", { reply_markup: keyboard });
 });
 
-// دریافت استایل جدول و ارسال نهایی
 tableComposer.callbackQuery(/table_style_(.+)/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const style = ctx.match[1];
   const headers = ctx.session.tableHeaders;
   const rows = ctx.session.tableRows;
 
-  // اعمال استایل‌های HTML تلگرام
   let html = style === 'bordered' ? "<table bordered striped>\n" : "<table>\n";
   
   html += "<tr>\n";
@@ -60,7 +57,10 @@ tableComposer.callbackQuery(/table_style_(.+)/, async (ctx) => {
   try {
     await (ctx.api.raw as any).sendRichMessage({
       chat_id: ctx.chat?.id,
-      rich_message: { html: html }
+      rich_message: { 
+        html: html,
+        is_rtl: containsRTL(html) // تشخیص خودکار راست‌چین بودن
+      }
     });
     await ctx.reply("✅ جدول شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
   } catch (err: any) {

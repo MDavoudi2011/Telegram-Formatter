@@ -1,5 +1,5 @@
 import { Composer, InlineKeyboard } from "grammy";
-import { BotContext, initialSession, sanitizeHtml } from "../types";
+import { BotContext, initialSession, sanitizeHtml, containsRTL } from "../types";
 
 export const listComposer = new Composer<BotContext>();
 
@@ -17,7 +17,6 @@ listComposer.callbackQuery("create_list", async (ctx) => {
   await ctx.editMessageText("لطفاً نوع لیست را انتخاب کنید:", { reply_markup: keyboard });
 });
 
-// دریافت نوع لیست انتخاب شده
 listComposer.callbackQuery(/list_type_(.+)/, async (ctx) => {
   const type = ctx.match[1] as 'unordered' | 'ordered' | 'checkbox';
   ctx.session.listType = type;
@@ -38,7 +37,6 @@ listComposer.callbackQuery("finish_list", async (ctx) => {
     return;
   }
 
-  // ساختاردهی HTML بر اساس نوع انتخاب شده
   let html = type === 'ordered' ? "<ol>\n" : "<ul>\n";
   
   for (const item of items) {
@@ -54,7 +52,10 @@ listComposer.callbackQuery("finish_list", async (ctx) => {
   try {
     await (ctx.api.raw as any).sendRichMessage({
       chat_id: ctx.chat?.id,
-      rich_message: { html: html }
+      rich_message: { 
+        html: html,
+        is_rtl: containsRTL(html) // تشخیص خودکار راست‌چین بودن
+      }
     });
     await ctx.reply("✅ لیست شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
   } catch (err: any) {
