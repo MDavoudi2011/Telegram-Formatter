@@ -78,9 +78,9 @@ export default function LogsPage() {
           <div className="space-y-1">
             <h1 className="text-3xl font-medium tracking-tight text-white flex items-center gap-3">
               <Activity className="w-7 h-7 text-indigo-400" />
-              System Logs
+              گزارشات سیستم
             </h1>
-            <p className="text-neutral-400 text-sm">Real-time debugging and activity monitor</p>
+            <p className="text-neutral-400 text-sm">مانیتورینگ و اشکال‌زدایی لحظه‌ای فعالیت ربات</p>
           </div>
           
           <div className="flex items-center gap-3">
@@ -89,24 +89,24 @@ export default function LogsPage() {
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${autoRefresh ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:bg-neutral-800'}`}
             >
               <RefreshCw className={`w-4 h-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-              Auto Refresh
+              بروزرسانی خودکار
             </button>
             <button 
               onClick={clearLogs}
               className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 border border-neutral-800 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 rounded-lg text-sm font-medium transition-colors"
             >
               <Trash2 className="w-4 h-4" />
-              Clear
+              پاکسازی
             </button>
           </div>
         </header>
 
         <div className="space-y-4">
           {loading && logs.length === 0 ? (
-            <div className="text-center py-12 text-neutral-500">Loading logs...</div>
+            <div className="text-center py-12 text-neutral-500">در حال بارگذاری گزارشات...</div>
           ) : logs.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-neutral-800 rounded-2xl text-neutral-500 bg-neutral-900/50">
-              No logs recorded yet. Interact with the bot to see activity.
+              هنوز هیچ گزارشی ثبت نشده است. با ربات تعامل کنید تا فعالیت‌ها ثبت شوند.
             </div>
           ) : (
             <div className="space-y-3">
@@ -123,13 +123,13 @@ export default function LogsPage() {
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex items-center justify-between gap-4">
                           <span className="font-medium truncate">{log.message}</span>
-                          <span className="text-xs opacity-70 whitespace-nowrap">
+                          <span className="text-xs opacity-70 whitespace-nowrap" dir="ltr">
                             {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })}
                           </span>
                         </div>
                         {log.details && (
-                          <div className="bg-black/40 p-3 rounded-lg overflow-x-auto border border-black/20">
-                            <pre className="text-xs font-mono opacity-80 whitespace-pre-wrap break-all">
+                          <div className="bg-black/40 p-3 rounded-lg overflow-x-auto border border-black/20" dir="ltr">
+                            <pre className="text-xs font-mono opacity-80 whitespace-pre-wrap break-all text-left">
                               {log.details}
                             </pre>
                           </div>

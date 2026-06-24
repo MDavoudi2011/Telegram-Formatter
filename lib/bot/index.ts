@@ -14,11 +14,11 @@ bot.use(async (ctx, next) => {
 
 // Command handler for /start
 bot.command("start", async (ctx) => {
-  logger.info("User sent /start command", { chat_id: ctx.chat?.id });
+  logger.info("کاربر دستور /start را ارسال کرد", { chat_id: ctx.chat?.id });
   await ctx.reply(
-    "👋 <b>Welcome to the Smart Formatter Bot!</b>\\n\\n" +
-    "Send me any unstructured text, messy notes, or raw data, and I will help you format it into a beautiful Table or List for Telegram.\\n\\n" +
-    "Just send me some text to get started!",
+    "👋 <b>به ربات فرمت‌کننده هوشمند خوش آمدید!</b>\n\n" +
+    "متن‌های نامرتب، یادداشت‌ها یا داده‌های خام خود را بفرستید تا آن‌ها را به یک جدول یا لیست مرتب برای تلگرام تبدیل کنم.\n\n" +
+    "برای شروع، فقط کافیست یک متن ارسال کنید!",
     { parse_mode: "HTML" }
   );
 });
@@ -28,28 +28,28 @@ bot.on("message", async (ctx) => {
   const text = ctx.message.text || ctx.message.caption;
   
   if (!text) {
-    logger.warn("Received message without text or caption", { message: ctx.message });
-    await ctx.reply("Please send me some text or a captioned image/document to format.");
+    logger.warn("پیام بدون متن یا کپشن دریافت شد", { message: ctx.message });
+    await ctx.reply("لطفاً یک متن یا تصویری که دارای توضیحات (کپشن) است ارسال کنید.");
     return;
   }
   
-  logger.info("Received text message to format", { text_length: text.length });
+  logger.info("دریافت متن برای فرمت‌بندی", { text_length: text.length });
   
   // Create an inline keyboard with the 3 formatting options.
   // We use short callback_data to stay well under the 64-byte limit.
   const keyboard = {
     inline_keyboard: [
       [
-        { text: "📊 ساخت جدول", callback_data: "format_table" },
-        { text: "📝 ساخت لیست شیک", callback_data: "format_list" }
+        { text: "ساخت جدول", callback_data: "format_table" },
+        { text: "ساخت لیست", callback_data: "format_list" }
       ],
       [
-        { text: "✨ فرمت خودکار هوشمند", callback_data: "format_smart" }
+        { text: "فرمت خودکار", callback_data: "format_smart" }
       ]
     ]
   };
 
-  await ctx.reply("Select the format you want to apply to your text:", {
+  await ctx.reply("لطفاً قالب مورد نظر خود را انتخاب کنید:", {
     reply_to_message_id: ctx.message.message_id,
     reply_markup: keyboard
   });
@@ -58,7 +58,7 @@ bot.on("message", async (ctx) => {
 // Callback query handler for the inline keyboard buttons
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
-  logger.info(`Callback query triggered: ${data}`, { callbackQuery: ctx.callbackQuery });
+  logger.info(`دکمه شیشه‌ای انتخاب شد: ${data}`, { callbackQuery: ctx.callbackQuery });
   
   // We extract the original text from the message that the bot replied to.
   // This solves the 64-byte callback_data limit beautifully, as we don't need
@@ -68,9 +68,9 @@ bot.on("callback_query:data", async (ctx) => {
   const text = originalMessage && ("text" in originalMessage ? originalMessage.text : "caption" in originalMessage ? originalMessage.caption : undefined);
 
   if (!text) {
-    logger.error("Could not find original text for callback", { originalMessage });
+    logger.error("متن اصلی پیام برای دکمه پیدا نشد", { originalMessage });
     await ctx.answerCallbackQuery({
-      text: "❌ Error: Could not find the original text.",
+      text: "❌ خطا: متن اصلی پیام پیدا نشد.",
       show_alert: true
     });
     return;
@@ -81,85 +81,45 @@ bot.on("callback_query:data", async (ctx) => {
   else if (data === "format_list") formatType = "list";
   else if (data === "format_smart") formatType = "smart";
   else {
-    logger.warn("Unknown callback data", { data });
-    await ctx.answerCallbackQuery("Unknown format type.");
+    logger.warn("دیتای ناشناخته دکمه", { data });
+    await ctx.answerCallbackQuery("نوع فرمت ناشناخته است.");
     return;
   }
   
   // Acknowledge the callback immediately to remove loading state on the button
-  await ctx.answerCallbackQuery({ text: "⏳ در حال پردازش..." });
+  await ctx.answerCallbackQuery({ text: "⏳ در حال بررسی..." });
   
-  // Send a temporary processing message using the requested new 'sendRichMessageDraft'
-  let loadingMsgId: number | undefined;
-  try {
-    logger.info("Attempting sendRichMessageDraft API call...");
-    const draftRes = await (ctx.api as any).sendRichMessageDraft({
-      chat_id: ctx.chat?.id,
-      text: "<tg-thinking>در حال پردازش...</tg-thinking>",
-      reply_to_message_id: originalMessage.message_id,
-      parse_mode: "HTML"
-    });
-    loadingMsgId = draftRes.message_id;
-    logger.success("sendRichMessageDraft succeeded", { message_id: loadingMsgId });
-  } catch (err) {
-    logger.error("sendRichMessageDraft failed, using fallback ctx.reply", err);
-    // Fallback if the theoretical API throws an error
-    const msg = await ctx.reply("<tg-thinking>در حال پردازش...</tg-thinking> ⏳", { 
-      parse_mode: "HTML",
-      reply_to_message_id: originalMessage.message_id 
-    });
-    loadingMsgId = msg.message_id;
-  }
+  // Send native "typing" action to make it feel responsive
+  await ctx.replyWithChatAction("typing").catch(() => {});
+  
+  const loadingMsg = await ctx.reply("⏳ <i>در حال پردازش و ارتباط با هوش مصنوعی...</i>", { 
+    parse_mode: "HTML",
+    reply_to_message_id: originalMessage.message_id 
+  });
   
   try {
-    logger.info(`Sending request to Gemini (${formatType})...`);
+    logger.info(`ارسال درخواست به Gemini (قالب: ${formatType})...`);
     const formattedText = await formatText(text, formatType);
-    logger.success(`Gemini format successful`, { result_length: formattedText.length });
+    logger.success(`پردازش موفق Gemini`, { result_length: formattedText.length });
     
-    // Replace the final message using the requested 'sendRichMessage'
-    try {
-      logger.info("Attempting sendRichMessage API call...");
-      await (ctx.api as any).sendRichMessage({
-        chat_id: ctx.chat?.id,
-        text: formattedText,
-        reply_to_message_id: originalMessage.message_id,
-        parse_mode: "HTML"
-      });
-      logger.success("sendRichMessage succeeded");
-      // Delete the thinking draft if a new rich message was sent
-      if (loadingMsgId) {
-        await ctx.api.deleteMessage(ctx.chat?.id as number, loadingMsgId).catch((err) => {
-          logger.warn("Failed to delete draft message after sendRichMessage", err);
-        });
-      }
-    } catch (err) {
-      logger.error("sendRichMessage failed, using fallback editMessageText", err);
-      // Fallback using standard editMessageText
-      if (loadingMsgId) {
-        await ctx.api.editMessageText(
-          ctx.chat?.id as number,
-          loadingMsgId,
-          formattedText,
-          { parse_mode: "HTML" }
-        ).catch((editErr) => {
-          logger.error("Fallback editMessageText failed too", editErr);
-        });
-      }
-    }
+    await ctx.api.editMessageText(
+      ctx.chat?.id as number,
+      loadingMsg.message_id,
+      formattedText,
+      { parse_mode: "HTML" }
+    );
   } catch (error) {
-    logger.error("Format Error during Gemini processing", error);
-    if (loadingMsgId) {
-      await ctx.api.editMessageText(
-        ctx.chat?.id as number,
-        loadingMsgId,
-        "❌ <b>Error:</b> Failed to format the text.",
-        { parse_mode: "HTML" }
-      ).catch(() => {});
-    }
+    logger.error("خطا در هنگام ارتباط با Gemini", error);
+    await ctx.api.editMessageText(
+      ctx.chat?.id as number,
+      loadingMsg.message_id,
+      "❌ <b>خطا:</b> متأسفانه در ارتباط با هوش مصنوعی مشکلی رخ داد. لطفاً دوباره تلاش کنید.",
+      { parse_mode: "HTML" }
+    ).catch((err) => logger.error("خطا در بروزرسانی پیام ارور", err));
   }
 });
 
 // Error handling wrapper
 bot.catch((err) => {
-  logger.error(`Fatal error in bot`, err);
+  logger.error(`خطای ناشناخته و کلی در ربات`, err);
 });

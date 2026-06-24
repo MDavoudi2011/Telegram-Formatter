@@ -8,8 +8,16 @@ export type LogEntry = {
   details?: any;
 };
 
-// In-memory log storage for debugging
-const logs: LogEntry[] = [];
+// In-memory log storage for debugging (persistent in dev/serverless context)
+declare global {
+  var __appLogs: LogEntry[] | undefined;
+}
+
+if (!globalThis.__appLogs) {
+  globalThis.__appLogs = [];
+}
+
+const logs: LogEntry[] = globalThis.__appLogs;
 
 export const logger = {
   log: (level: LogLevel, message: string, details?: any) => {
