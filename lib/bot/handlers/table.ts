@@ -7,7 +7,7 @@ tableComposer.callbackQuery("create_table", async (ctx) => {
   ctx.session = initialSession();
   ctx.session.step = 'table_headers';
   await ctx.answerCallbackQuery();
-  await ctx.reply("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\\n(هر عنوان را در یک خط جداگانه بنویسید)");
+  await ctx.reply("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
 });
 
 tableComposer.callbackQuery("finish_table", async (ctx) => {
@@ -15,36 +15,37 @@ tableComposer.callbackQuery("finish_table", async (ctx) => {
   const headers = ctx.session.tableHeaders;
   const rows = ctx.session.tableRows;
 
-  if (headers.length === 0) {
-    await ctx.reply("جدول شما خالی است.");
+  // بررسی جامع برای جلوگیری از خطای 400 تلگرام
+  if (!headers || headers.length === 0 || !rows || rows.length === 0) {
+    await ctx.reply("❌ داده‌های جدول ناقص است. حداقل یک سرستون و یک سطر اطلاعات نیاز است.");
     ctx.session = initialSession();
     return;
   }
 
-  let html = "<table bordered striped>\\n<tr>\\n";
+  let html = "<table bordered striped>\n<tr>\n";
   for (const h of headers) {
-    html += `<th>${sanitizeHtml(h)}</th>\\n`;
+    html += `<th>${sanitizeHtml(h)}</th>\n`;
   }
-  html += "</tr>\\n";
+  html += "</tr>\n";
 
   for (const row of rows) {
-    html += "<tr>\\n";
+    html += "<tr>\n";
     for (let i = 0; i < headers.length; i++) {
-      html += `<td>${sanitizeHtml(row[i] || "-")}</td>\\n`;
+      html += `<td>${sanitizeHtml(row[i] || "-")}</td>\n`;
     }
-    html += "</tr>\\n";
+    html += "</tr>\n";
   }
   html += "</table>";
 
   try {
-    await (ctx.api as any).sendRichMessage({
+    await (ctx.api.raw as any).sendRichMessage({
       chat_id: ctx.chat?.id,
       rich_message: { html: html }
     });
-    await ctx.reply("✅ جدول شما با موفقیت ارسال شد!\\nبرای شروع مجدد /start را بزنید.");
+    await ctx.reply("✅ جدول شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
   } catch (err: any) {
     console.error("Error sending table rich message:", err);
-    await ctx.reply(`❌ خطا در ارسال پیام:\\n${err.message || err}`);
+    await ctx.reply(`❌ خطا در ارسال پیام:\n${err.message || err}`);
   }
   ctx.session = initialSession();
 });
@@ -58,15 +59,11 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
     ctx.session.currentRow = 1;
 
     const keyboard = {
-      inline_keyboard: [
-        [
-          { text: "لغو", callback_data: "cancel" }
-        ]
-      ]
+      inline_keyboard: [[{ text: "لغو", callback_data: "cancel" }]]
     };
 
     await ctx.reply(
-      `سرستون‌ها ثبت شدند (${lines.length} ستون).\\n\\nحالا لطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید. (هر مورد در یک خط جداگانه)`,
+      `سرستون‌ها ثبت شدند (${lines.length} ستون).\n\nحالا لطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید. (مقادیر را پشت سر هم و هرکدام در یک خط بنویسید)`,
       { reply_markup: keyboard }
     );
   } else if (step === 'table_rows') {
@@ -76,14 +73,14 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
     const keyboard = {
       inline_keyboard: [
         [
-          { text: "دریافت خروجی جدول", callback_data: "finish_table" },
+          { text: "✅ دریافت خروجی جدول", callback_data: "finish_table" },
           { text: "لغو", callback_data: "cancel" }
         ]
       ]
     };
 
     await ctx.reply(
-      `اطلاعات سطر قبلی ثبت شد.\\n\\nلطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید.\\n(در صورتی که داده‌ها تمام شده است روی «دریافت خروجی جدول» کلیک کنید)`,
+      `سطر قبلی ثبت شد. جدول شما الان ${ctx.session.tableRows.length} سطر دارد.\nدر صورت نیاز سطر ${ctx.session.currentRow} را وارد کنید یا خروجی بگیرید:`,
       { reply_markup: keyboard }
     );
   }

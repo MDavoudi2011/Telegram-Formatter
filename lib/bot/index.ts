@@ -7,15 +7,14 @@ import { tableComposer, handleTableMessage } from "./handlers/table";
 const token = process.env.TELEGRAM_BOT_TOKEN || "DUMMY_TOKEN";
 export const bot = new Bot<BotContext>(token);
 
+// توجه: استفاده از حافظه محلی برای نشست‌ها در Vercel موقتی است.
 bot.use(session({ initial: initialSession, storage: new GlobalMapStorageAdapter() }));
 
-// Log updates
 bot.use(async (ctx, next) => {
   console.log(`[Update] ID: ${ctx.update.update_id}`);
   await next();
 });
 
-// Use Composers
 bot.use(listComposer);
 bot.use(tableComposer);
 
@@ -25,14 +24,14 @@ bot.command("start", async (ctx) => {
   const keyboard = {
     inline_keyboard: [
       [
-        { text: "ساخت لیست", callback_data: "create_list" },
-        { text: "ساخت جدول", callback_data: "create_table" }
+        { text: "📝 ساخت لیست", callback_data: "create_list" },
+        { text: "📊 ساخت جدول", callback_data: "create_table" }
       ]
     ]
   };
 
   await ctx.reply(
-    "👋 <b>خوش آمدید!</b>\n\nلطفاً یک گزینه را برای شروع ساخت و فرمت‌بندی انتخاب کنید:",
+    "👋 <b>خوش آمدید!</b>\n\nلطفاً یک گزینه را برای شروع انتخاب کنید:",
     {
       parse_mode: "HTML",
       reply_markup: keyboard
@@ -47,18 +46,21 @@ bot.callbackQuery("cancel", async (ctx) => {
 });
 
 bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text;
+  // تبدیل حروف \n متنی به اینتر واقعی برای رفع مشکل رفتن به خط بعد
+  const rawText = ctx.message.text.replace(/\\n/g, '\n');
   const step = ctx.session.step;
 
+  // مدیریت خطای خاموش شدن سرور Vercel و پاک شدن رم
   if (step === 'idle') {
-    await ctx.reply("لطفاً ابتدا از منوی شروع یک گزینه را انتخاب کنید.\n/start");
+    await ctx.reply("⚠️ به نظر می‌رسد زمان نشست شما منقضی شده است (خاموشی موقت سرور). لطفاً مجدداً از منوی شروع یک گزینه را انتخاب کنید.\n/start");
     return;
   }
 
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l !== "");
+  
   if (lines.length === 0) {
-    await ctx.reply("متن معتبری یافت نشد.");
-    return;
+      await ctx.reply("متن ارسالی خالی بود. لطفاً دوباره امتحان کنید.");
+      return;
   }
 
   if (step === 'list_items') {
@@ -66,8 +68,4 @@ bot.on("message:text", async (ctx) => {
   } else if (step === 'table_headers' || step === 'table_rows') {
     await handleTableMessage(ctx, lines);
   }
-});
-
-bot.catch((err) => {
-  console.error("Error in bot:", err);
 });
