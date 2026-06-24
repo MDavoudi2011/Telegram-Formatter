@@ -1,73 +1,26 @@
-import { Bot, Context, session, SessionFlavor, StorageAdapter } from "grammy";
-import fs from 'fs';
-import path from 'path';
-
-export interface SessionData {
-  step: 'idle' | 'list_items' | 'table_headers' | 'table_rows';
-  listItems: string[];
-  tableHeaders: string[];
-  tableRows: string[][];
-  currentRow: number;
-}
-
-function initial(): SessionData {
-  return {
-    step: 'idle',
-    listItems: [],
-    tableHeaders: [],
-    tableRows: [],
-    currentRow: 1,
-  };
-}
-
-class FileStorageAdapter implements StorageAdapter<SessionData> {
-  // Use /tmp which is the only writable directory in Vercel Serverless
-  private filePath = path.join('/tmp', 'sessions.json');
-
-  private readAll(): Record<string, string> {
-    try {
-      if (fs.existsSync(this.filePath)) {
-        return JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-      }
-    } catch (e) {}
-    return {};
-  }
-
-  private writeAll(data: Record<string, string>) {
-    try {
-      fs.writeFileSync(this.filePath, JSON.stringify(data));
-    } catch (e) {
-      console.error("Failed to write session data to /tmp", e);
-    }
-  }
-
-  read(key: string): SessionData | undefined {
-    const all = this.readAll();
-    return all[key] ? JSON.parse(all[key]) : undefined;
-  }
-
-  write(key: string, data: SessionData): void {
-    const all = this.readAll();
-    all[key] = JSON.stringify(data);
-    this.writeAll(all);
-  }
-
-  delete(key: string): void {
-    const all = this.readAll();
-    delete all[key];
-    this.writeAll(all);
-  }
-}
-
-type MyContext = Context & SessionFlavor<SessionData>;
+import { Bot, session } from "grammy";
+import { BotContext, initialSession } from "./types";
+import { GlobalMapStorageAdapter } from "./session";
+import { listComposer, handleListMessage } from "./handlers/list";
+import { tableComposer, handleTableMessage } from "./handlers/table";
 
 const token = process.env.TELEGRAM_BOT_TOKEN || "DUMMY_TOKEN";
-export const bot = new Bot<MyContext>(token);
+export const bot = new Bot<BotContext>(token);
 
-bot.use(session({ initial, storage: new FileStorageAdapter() }));
+bot.use(session({ initial: initialSession, storage: new GlobalMapStorageAdapter() }));
+
+// Log updates
+bot.use(async (ctx, next) => {
+  console.log(`[Update] ID: ${ctx.update.update_id}`);
+  await next();
+});
+
+// Use Composers
+bot.use(listComposer);
+bot.use(tableComposer);
 
 bot.command("start", async (ctx) => {
-  ctx.session = initial();
+  ctx.session = initialSession();
   
   const keyboard = {
     inline_keyboard: [
@@ -87,82 +40,10 @@ bot.command("start", async (ctx) => {
   );
 });
 
-bot.on("callback_query:data", async (ctx) => {
-  const data = ctx.callbackQuery.data;
-  const chatId = ctx.chat?.id;
-
-  if (data === "create_list") {
-    ctx.session = initial();
-    ctx.session.step = 'list_items';
-    await ctx.answerCallbackQuery();
-    await ctx.reply("لطفاً موارد لیست را ارسال کنید.\n(هر مورد را در یک خط جداگانه بنویسید)");
-  } 
-  else if (data === "create_table") {
-    ctx.session = initial();
-    ctx.session.step = 'table_headers';
-    await ctx.answerCallbackQuery();
-    await ctx.reply("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
-  }
-  else if (data === "finish_list") {
-    await ctx.answerCallbackQuery();
-    const items = ctx.session.listItems;
-    if (items.length === 0) {
-      await ctx.reply("لیست شما خالی است.");
-      return;
-    }
-
-    let markdown = "";
-    for (const item of items) {
-      markdown += `- ${item}\n`;
-    }
-
-    try {
-      await (ctx.api as any).sendRichMessage({
-        chat_id: chatId,
-        rich_message: { markdown: markdown }
-      });
-      await ctx.reply("✅ لیست شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
-      ctx.session = initial();
-    } catch (err: any) {
-      console.error(err);
-      await ctx.reply(`❌ خطا در ارسال پیام: ${err.message || err}`);
-    }
-  }
-  else if (data === "finish_table") {
-    await ctx.answerCallbackQuery();
-    const headers = ctx.session.tableHeaders;
-    const rows = ctx.session.tableRows;
-
-    if (headers.length === 0) {
-      await ctx.reply("جدول شما خالی است.");
-      return;
-    }
-
-    let markdown = "| " + headers.join(" | ") + " |\n";
-    markdown += "|" + headers.map(() => "---").join("|") + "|\n";
-
-    for (const row of rows) {
-      const paddedRow = headers.map((_, i) => row[i] || "-");
-      markdown += "| " + paddedRow.join(" | ") + " |\n";
-    }
-
-    try {
-      await (ctx.api as any).sendRichMessage({
-        chat_id: chatId,
-        rich_message: { markdown: markdown }
-      });
-      await ctx.reply("✅ جدول شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
-      ctx.session = initial();
-    } catch (err: any) {
-      console.error(err);
-      await ctx.reply(`❌ خطا در ارسال پیام: ${err.message || err}`);
-    }
-  }
-  else if (data === "cancel") {
-    await ctx.answerCallbackQuery();
-    ctx.session = initial();
-    await ctx.reply("عملیات لغو شد. برای شروع مجدد /start را بفرستید.");
-  }
+bot.callbackQuery("cancel", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session = initialSession();
+  await ctx.reply("عملیات لغو شد. برای شروع مجدد /start را بفرستید.");
 });
 
 bot.on("message:text", async (ctx) => {
@@ -181,57 +62,9 @@ bot.on("message:text", async (ctx) => {
   }
 
   if (step === 'list_items') {
-    ctx.session.listItems.push(...lines);
-    
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: "دریافت خروجی لیست", callback_data: "finish_list" },
-          { text: "لغو", callback_data: "cancel" }
-        ]
-      ]
-    };
-
-    await ctx.reply(
-      `موارد دریافت شدند (تعداد کل: ${ctx.session.listItems.length} مورد).\nمی‌توانید موارد بیشتری بفرستید تا به این لیست اضافه شود، یا روی دکمه زیر کلیک کنید:`,
-      { reply_markup: keyboard }
-    );
-  }
-  else if (step === 'table_headers') {
-    ctx.session.tableHeaders = lines;
-    ctx.session.step = 'table_rows';
-    ctx.session.currentRow = 1;
-
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: "لغو", callback_data: "cancel" }
-        ]
-      ]
-    };
-
-    await ctx.reply(
-      `سرستون‌ها ثبت شدند (${lines.length} ستون).\n\nحالا لطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید. (هر مورد در یک خط جداگانه)`,
-      { reply_markup: keyboard }
-    );
-  }
-  else if (step === 'table_rows') {
-    ctx.session.tableRows.push(lines);
-    ctx.session.currentRow++;
-
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: "دریافت خروجی جدول", callback_data: "finish_table" },
-          { text: "لغو", callback_data: "cancel" }
-        ]
-      ]
-    };
-
-    await ctx.reply(
-      `اطلاعات سطر قبلی ثبت شد.\n\nلطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید.\n(در صورتی که داده‌ها تمام شده است روی «دریافت خروجی جدول» کلیک کنید)`,
-      { reply_markup: keyboard }
-    );
+    await handleListMessage(ctx, lines);
+  } else if (step === 'table_headers' || step === 'table_rows') {
+    await handleTableMessage(ctx, lines);
   }
 });
 
