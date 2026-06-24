@@ -1,14 +1,11 @@
-import { Context, SessionFlavor } from "grammy";
-
 export interface SessionData {
-  step: 'idle' | 'list_items' | 'table_headers' | 'table_rows';
+  step: 'idle' | 'list_type' | 'list_items' | 'table_headers' | 'table_rows' | 'table_style';
   listItems: string[];
   tableHeaders: string[];
   tableRows: string[][];
   currentRow: number;
+  listType?: 'unordered' | 'ordered' | 'checkbox';
 }
-
-export type BotContext = Context & SessionFlavor<SessionData>;
 
 export function initialSession(): SessionData {
   return {
@@ -21,5 +18,11 @@ export function initialSession(): SessionData {
 }
 
 export function sanitizeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (!text) return "";
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 }

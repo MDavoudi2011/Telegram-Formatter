@@ -1,4 +1,4 @@
-import { Composer } from "grammy";
+import { Composer, InlineKeyboard } from "grammy";
 import { BotContext, initialSession, sanitizeHtml } from "../types";
 
 export const tableComposer = new Composer<BotContext>();
@@ -7,22 +7,42 @@ tableComposer.callbackQuery("create_table", async (ctx) => {
   ctx.session = initialSession();
   ctx.session.step = 'table_headers';
   await ctx.answerCallbackQuery();
-  await ctx.reply("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
+  await ctx.editMessageText("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
 });
 
+// وقتی کاربر دکمه دریافت خروجی را زد، ابتدا استایل را می‌پرسیم
 tableComposer.callbackQuery("finish_table", async (ctx) => {
   await ctx.answerCallbackQuery();
   const headers = ctx.session.tableHeaders;
   const rows = ctx.session.tableRows;
 
-  // بررسی جامع برای جلوگیری از خطای 400 تلگرام
   if (!headers || headers.length === 0 || !rows || rows.length === 0) {
     await ctx.reply("❌ داده‌های جدول ناقص است. حداقل یک سرستون و یک سطر اطلاعات نیاز است.");
     ctx.session = initialSession();
     return;
   }
 
-  let html = "<table bordered striped>\n<tr>\n";
+  ctx.session.step = 'table_style';
+  
+  const keyboard = new InlineKeyboard()
+    .text("جدول ساده", "table_style_plain")
+    .text("حاشیه‌دار و راه‌راه", "table_style_bordered").row()
+    .text("لغو", "cancel");
+
+  await ctx.editMessageText("لطفاً ظاهر جدول خود را انتخاب کنید:", { reply_markup: keyboard });
+});
+
+// دریافت استایل جدول و ارسال نهایی
+tableComposer.callbackQuery(/table_style_(.+)/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const style = ctx.match[1];
+  const headers = ctx.session.tableHeaders;
+  const rows = ctx.session.tableRows;
+
+  // اعمال استایل‌های HTML تلگرام
+  let html = style === 'bordered' ? "<table bordered striped>\n" : "<table>\n";
+  
+  html += "<tr>\n";
   for (const h of headers) {
     html += `<th>${sanitizeHtml(h)}</th>\n`;
   }
@@ -44,7 +64,6 @@ tableComposer.callbackQuery("finish_table", async (ctx) => {
     });
     await ctx.reply("✅ جدول شما با موفقیت ارسال شد!\nبرای شروع مجدد /start را بزنید.");
   } catch (err: any) {
-    console.error("Error sending table rich message:", err);
     await ctx.reply(`❌ خطا در ارسال پیام:\n${err.message || err}`);
   }
   ctx.session = initialSession();
@@ -58,9 +77,7 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
     ctx.session.step = 'table_rows';
     ctx.session.currentRow = 1;
 
-    const keyboard = {
-      inline_keyboard: [[{ text: "لغو", callback_data: "cancel" }]]
-    };
+    const keyboard = new InlineKeyboard().text("لغو", "cancel");
 
     await ctx.reply(
       `سرستون‌ها ثبت شدند (${lines.length} ستون).\n\nحالا لطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید. (مقادیر را پشت سر هم و هرکدام در یک خط بنویسید)`,
@@ -70,17 +87,12 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
     ctx.session.tableRows.push(lines);
     ctx.session.currentRow++;
 
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: "✅ دریافت خروجی جدول", callback_data: "finish_table" },
-          { text: "لغو", callback_data: "cancel" }
-        ]
-      ]
-    };
+    const keyboard = new InlineKeyboard()
+      .text("✅ مرحله بعد (انتخاب ظاهر)", "finish_table").row()
+      .text("لغو", "cancel");
 
     await ctx.reply(
-      `سطر قبلی ثبت شد. جدول شما الان ${ctx.session.tableRows.length} سطر دارد.\nدر صورت نیاز سطر ${ctx.session.currentRow} را وارد کنید یا خروجی بگیرید:`,
+      `سطر قبلی ثبت شد. جدول شما الان ${ctx.session.tableRows.length} سطر دارد.\nدر صورت نیاز سطر ${ctx.session.currentRow} را وارد کنید یا مرحله بعد را بزنید:`,
       { reply_markup: keyboard }
     );
   }
