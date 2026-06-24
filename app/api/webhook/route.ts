@@ -1,7 +1,6 @@
 import { webhookCallback } from "grammy";
 import { bot } from "@/lib/bot";
 import { NextRequest, NextResponse } from "next/server";
-import { logger } from "@/lib/logger";
 
 // Using grammy's built-in webhook callback adapter for web standards (Next.js App Router compatible)
 const handleUpdate = webhookCallback(bot, "std/http");
@@ -15,7 +14,7 @@ export async function POST(req: NextRequest) {
     const response = await handleUpdate(req);
     return response;
   } catch (error) {
-    logger.error("Webhook route encountered an error", error);
+    console.error("Webhook route encountered an error", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

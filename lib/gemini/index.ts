@@ -1,9 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { sanitizeTelegramHTML } from "../bot/utils";
-import { logger } from "../logger";
 
 // Initialize Gemini client using server-side environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.error("CRITICAL: GEMINI_API_KEY is missing or empty in environment variables!");
+}
+const ai = new GoogleGenAI({ apiKey: apiKey || "DUMMY_KEY" });
 
 
 const SYSTEM_INSTRUCTIONS = {
@@ -74,7 +77,12 @@ export async function formatText(text: string, style: "table" | "list" | "smart"
     
     return sanitizeTelegramHTML(output.trim());
   } catch (error) {
-    logger.error("Gemini API Request Failed", error);
+    console.error("Gemini API Request Failed:", error);
+    if (error instanceof Error) {
+      console.error(error.message, error.stack);
+    } else {
+      console.error(JSON.stringify(error, null, 2));
+    }
     throw new Error("Failed to format text with Gemini.");
   }
 }
