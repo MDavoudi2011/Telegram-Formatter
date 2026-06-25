@@ -7,7 +7,14 @@ tableComposer.callbackQuery("create_table", async (ctx) => {
   ctx.session = initialSession();
   ctx.session.step = 'table_headers';
   await ctx.answerCallbackQuery();
-  await ctx.editMessageText("لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n(هر عنوان را در یک خط جداگانه بنویسید)");
+  
+  const text = "📊 <b>تعیین سرستون‌های جدول</b>\n\n" +
+    "لطفاً عنوان‌های جدول (سرستون‌ها) را ارسال کنید.\n" +
+    "(هر عنوان را در یک خط جداگانه بنویسید)";
+    
+  const keyboard = new InlineKeyboard().text("لغو", "cancel");
+  
+  await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
 });
 
 tableComposer.callbackQuery("finish_table", async (ctx) => {
@@ -41,7 +48,8 @@ tableComposer.callbackQuery(/table_style_(.+)/, async (ctx) => {
   
   html += "<tr>\n";
   for (const h of headers) {
-    html += `<th>${sanitizeHtml(h)}</th>\n`;
+    // جایگزینی th با td و b برای جلوگیری از باگ شیفت شدن ستون‌های تلگرام
+    html += `<td><b>${sanitizeHtml(h)}</b></td>\n`;
   }
   html += "</tr>\n";
 
@@ -80,10 +88,13 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
     const keyboard = new InlineKeyboard().text("لغو", "cancel");
 
     await ctx.reply(
-      `سرستون‌ها ثبت شدند (${lines.length} ستون).\n\nحالا لطفاً اطلاعات سطر ${ctx.session.currentRow} را وارد کنید. (مقادیر را پشت سر هم و هرکدام در یک خط بنویسید)`,
-      { reply_markup: keyboard }
+      `✅ سرستون‌ها ثبت شدند (${lines.length} ستون).\n\n` +
+      `حالا اطلاعات <b>سطر ${ctx.session.currentRow}</b> را وارد کنید.\n` +
+      `(مقادیر را به ترتیب و هر کدام را در یک خط جداگانه بنویسید)`,
+      { parse_mode: "HTML", reply_markup: keyboard }
     );
   } else if (step === 'table_rows') {
+    const savedRow = ctx.session.currentRow;
     ctx.session.tableRows.push(lines);
     ctx.session.currentRow++;
 
@@ -92,8 +103,9 @@ export async function handleTableMessage(ctx: BotContext, lines: string[]) {
       .text("لغو", "cancel");
 
     await ctx.reply(
-      `سطر قبلی ثبت شد. جدول شما الان ${ctx.session.tableRows.length} سطر دارد.\nدر صورت نیاز سطر ${ctx.session.currentRow} را وارد کنید یا مرحله بعد را بزنید:`,
-      { reply_markup: keyboard }
+      `✅ سطر ${savedRow} ثبت شد.\n\n` +
+      `در صورت نیاز، اطلاعات <b>سطر ${ctx.session.currentRow}</b> را وارد کنید و یا دکمه مرحله بعد را بزنید:`,
+      { parse_mode: "HTML", reply_markup: keyboard }
     );
   }
 }
